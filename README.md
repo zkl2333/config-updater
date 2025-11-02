@@ -1,6 +1,6 @@
 # Config Updater
 
-极简通用配置自动更新服务，Rust 编写，镜像仅 ~35MB。
+极简通用配置自动更新服务，Rust 编写。
 
 ## 快速开始
 
@@ -94,22 +94,34 @@ services:
 
 ## Hook 机制（可选）
 
-类似 Git Hooks，将脚本挂载到固定路径即可自动执行。
+类似 Git Hooks，将脚本挂载到固定路径即可自动执行。程序会在配置更新后自动调用 Hook 脚本。
 
 ### Hook 路径
 
-- `/hooks/post-update` - 配置更新成功后执行
-- `/hooks/on-error` - 更新失败时执行
+| 路径 | 触发时机 | 用途 |
+|------|---------|------|
+| `/hooks/post-update` | 配置更新成功后 | 重载服务、发送通知等 |
+| `/hooks/on-error` | 更新失败时 | 错误通知、告警等 |
 
-### Mihomo Hook 示例
+### 配置步骤
 
-创建 `hooks/mihomo.sh`：
+#### 1. 创建 Hook 脚本目录
+
+在你的项目根目录创建 `hooks` 文件夹：
+
+```bash
+mkdir -p hooks
+```
+
+#### 2. 创建 Hook 脚本
+
+**Mihomo 重载示例** (`hooks/mihomo.sh`)：
 
 ```bash
 #!/bin/sh
 set -e
 
-# Mihomo API 地址
+# Mihomo API 地址（容器名称）
 MIHOMO_API="http://mihomo:9090"
 MIHOMO_CONFIG_PATH="/root/.config/mihomo/config.yaml"
 
@@ -124,18 +136,137 @@ echo "配置重载成功"
 exit 0
 ```
 
-挂载到容器（在 docker-compose.yaml 中）：
+**错误通知示例** (`hooks/on-error.sh`)：
 
-```yaml
-volumes:
-  - ./hooks/mihomo.sh:/hooks/post-update:ro
+```bash
+#!/bin/sh
+
+# 可以在这里添加通知逻辑
+echo "配置更新失败，时间: $(date)"
+echo "配置路径: $CONFIG_PATH"
+
+# 示例：发送邮件、Webhook 等
+# curl -X POST https://your-webhook-url -d "Config update failed"
+
+exit 0
 ```
 
-### 其他服务
+#### 3. 设置可执行权限
 
-- **Clash**: 与 Mihomo 类似，修改 API 地址
-- **V2Ray/Xray**: 通常会自动检测配置变化，无需 Hook
-- **自定义**: 创建你自己的 Hook 脚本
+**重要**：Hook 脚本必须有执行权限，否则会执行失败。
+
+```bash
+chmod +x hooks/mihomo.sh
+chmod +x hooks/on-error.sh
+```
+
+**验证权限**：
+
+```bash
+ls -l hooks/
+# 应该显示 -rwxr-xr-x (有 x 执行权限)
+```
+
+#### 4. 挂载到容器
+
+在 `docker-compose.yaml` 中挂载 Hook 脚本：
+
+```yaml
+config-updater:
+  volumes:
+    - ./config.yaml:/config/config.yaml:rw
+    - ./hooks/mihomo.sh:/hooks/post-update:ro     # 更新成功后执行
+    - ./hooks/on-error.sh:/hooks/on-error:ro      # 更新失败时执行
+```
+
+**注意事项**：
+
+- ✅ 使用 `:ro` (只读) 挂载 Hook 脚本更安全
+- ✅ Hook 脚本路径必须是 `/hooks/post-update` 或 `/hooks/on-error`（容器内路径）
+- ✅ 宿主机脚本可以任意命名（如 `mihomo.sh`），但挂载到容器时必须使用固定路径
+- ⚠️ 如果 Hook 执行失败，配置会自动回滚到上一个版本
+
+### 常见 Hook 场景
+
+#### Clash 重载
+
+```bash
+#!/bin/sh
+curl -X PUT "http://clash:9090/configs?force=true" \
+     -H "Content-Type: application/json" \
+     -d '{"path": "/root/.config/clash/config.yaml"}'
+```
+
+#### V2Ray/Xray 重启
+
+```bash
+#!/bin/sh
+# V2Ray 通常会自动检测配置变化，如不生效可手动重启
+docker restart v2ray
+```
+
+#### 通知推送（Telegram）
+
+```bash
+#!/bin/sh
+TELEGRAM_BOT_TOKEN="your_bot_token"
+TELEGRAM_CHAT_ID="your_chat_id"
+MESSAGE="✅ 配置已更新: $(date '+%Y-%m-%d %H:%M:%S')"
+
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+     -d "chat_id=${TELEGRAM_CHAT_ID}" \
+     -d "text=${MESSAGE}"
+```
+
+#### 通知推送（Bark - iOS）
+
+```bash
+#!/bin/sh
+BARK_URL="https://api.day.app/your_key"
+curl -s "${BARK_URL}/配置已更新/时间:$(date '+%H:%M:%S')"
+```
+
+### Hook 调试
+
+如果 Hook 没有执行或执行失败，查看容器日志：
+
+```bash
+docker-compose logs -f config-updater
+```
+
+常见日志输出：
+
+```
+# Hook 执行成功
+[INFO] 正在执行钩子脚本: /hooks/post-update
+[INFO] 钩子脚本输出: 重载 Mihomo 配置...
+[INFO] 钩子脚本输出: 配置重载成功
+[INFO] 钩子脚本执行成功
+
+# Hook 执行失败（配置会自动回滚）
+[ERROR] 更新后钩子脚本执行失败: 钩子脚本执行失败: permission denied
+[WARN] 已从备份恢复配置
+```
+
+### 权限问题排查
+
+如果看到 `permission denied` 错误：
+
+1. **检查宿主机权限**：
+   ```bash
+   ls -l hooks/
+   # 确保有 x 权限：-rwxr-xr-x
+   ```
+
+2. **重新设置权限**：
+   ```bash
+   chmod +x hooks/*.sh
+   ```
+
+3. **重启容器**：
+   ```bash
+   docker-compose restart config-updater
+   ```
 
 ## 卷挂载说明
 
@@ -213,7 +344,7 @@ docker build -t config-updater .
 
 ## 特性
 
-- 🚀 极小镜像（~35MB）
+- 🚀 极小镜像（~18MB）
 - ⚡ Rust 高性能
 - 🔍 SHA256 差异检测
 - 🔄 失败自动回滚

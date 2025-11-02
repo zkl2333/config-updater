@@ -135,8 +135,36 @@ fn restore_backup(config_path: &str) -> Result<()> {
     }
 }
 
+fn check_hook_permissions(hook_path: &str) -> Result<()> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let metadata = std::fs::metadata(hook_path)
+        .context("无法读取钩子脚本元数据")?;
+
+    let permissions = metadata.permissions();
+    let mode = permissions.mode();
+
+    // 检查是否有执行权限（所有者、组或其他用户）
+    let is_executable = (mode & 0o111) != 0;
+
+    if !is_executable {
+        anyhow::bail!(
+            "钩子脚本没有执行权限，请运行: chmod +x {}",
+            hook_path
+        );
+    }
+
+    Ok(())
+}
+
 fn execute_hook(hook_path: &str, config_path: &str) -> Result<()> {
     info!("正在执行钩子脚本: {}", hook_path);
+
+    // 检查权限
+    if let Err(e) = check_hook_permissions(hook_path) {
+        warn!("权限检查失败: {}", e);
+        warn!("提示：在宿主机上运行 'chmod +x {}' 并重启容器", hook_path);
+    }
 
     let output = Command::new("sh")
         .arg(hook_path)

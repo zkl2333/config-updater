@@ -1,56 +1,213 @@
-# Hooks
+# Hooks 示例
 
-类似 Git Hooks，将脚本放到固定路径即可自动执行。
+此目录包含 Hook 脚本示例。Hook 脚本会在配置更新时自动执行。
 
-## Hook 文件路径
+## 快速开始
 
-- `/hooks/post-update` - 配置更新成功后执行
-- `/hooks/on-error` - 更新失败时执行
+### 1. 创建 Hook 脚本
 
-## 使用方法
+从下面的示例中复制一个脚本，保存到此目录（如 `mihomo.sh`）
 
-1. 创建你的 Hook 脚本（如 `mihomo.sh`）
-2. 在脚本内部配置需要的参数
-3. 挂载到容器的固定路径：
+### 2. 设置执行权限
 
-```yaml
-volumes:
-  - ./hooks/mihomo.sh:/hooks/post-update:ro
+**⚠️ 重要**：必须给脚本添加执行权限
+
+```bash
+chmod +x hooks/mihomo.sh
 ```
 
-就这么简单！
+**验证权限**：
+```bash
+ls -l hooks/
+# 应该显示 -rwxr-xr-x (有 x 执行权限)
+```
 
-## 示例
+### 3. 挂载到容器
 
-### Mihomo
+在 `docker-compose.yaml` 中：
+
+```yaml
+config-updater:
+  volumes:
+    - ./hooks/mihomo.sh:/hooks/post-update:ro
+```
+
+## Hook 路径说明
+
+容器内有两个固定的 Hook 路径：
+
+| 容器内路径 | 触发时机 | 用途 |
+|----------|---------|------|
+| `/hooks/post-update` | 配置更新成功后 | 重载服务、发送通知 |
+| `/hooks/on-error` | 更新失败时 | 错误通知、告警 |
+
+**注意**：宿主机脚本可以任意命名，但挂载时必须映射到这两个路径之一。
+
+## 示例脚本
+
+### Mihomo 重载
 
 ```bash
 #!/bin/sh
 set -e
 
-# 在脚本内部配置参数
+# Mihomo API 地址（容器名称）
 MIHOMO_API="http://mihomo:9090"
 MIHOMO_CONFIG_PATH="/root/.config/mihomo/config.yaml"
 
+echo "重载 Mihomo 配置..."
+
+# 调用 Mihomo API 重载配置
 curl -s -X PUT "$MIHOMO_API/configs?force=true" \
     -H "Content-Type: application/json" \
     -d "{\"path\": \"$MIHOMO_CONFIG_PATH\"}"
 
+echo "配置重载成功"
 exit 0
 ```
 
-### Clash
-
-类似 Mihomo，修改 API 地址即可。
-
-### 自定义
+### Clash 重载
 
 ```bash
 #!/bin/sh
-# 你的服务重载逻辑
-# 配置文件路径可通过环境变量 CONFIG_PATH 获取
+set -e
 
-your-reload-command
+# Clash API 地址
+CLASH_API="http://clash:9090"
 
-exit 0  # 成功返回 0，失败返回非 0 会触发回滚
+echo "重载 Clash 配置..."
+
+curl -s -X PUT "$CLASH_API/configs?force=true" \
+    -H "Content-Type: application/json" \
+    -d '{"path": "/root/.config/clash/config.yaml"}'
+
+echo "配置重载成功"
+exit 0
+```
+
+### 错误通知 (Telegram)
+
+```bash
+#!/bin/sh
+
+TELEGRAM_BOT_TOKEN="your_bot_token"
+TELEGRAM_CHAT_ID="your_chat_id"
+MESSAGE="⚠️ 配置更新失败: $(date '+%Y-%m-%d %H:%M:%S')"
+
+curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+     -d "chat_id=${TELEGRAM_CHAT_ID}" \
+     -d "text=${MESSAGE}"
+
+exit 0
+```
+
+### 错误通知 (Bark - iOS)
+
+```bash
+#!/bin/sh
+
+BARK_URL="https://api.day.app/your_key"
+
+curl -s "${BARK_URL}/配置更新失败/时间:$(date '+%H:%M:%S')?group=config-updater&level=timeSensitive"
+
+exit 0
+```
+
+### 通用重启容器
+
+```bash
+#!/bin/sh
+
+# 通过 Docker 重启服务（需要挂载 docker.sock）
+docker restart mihomo
+
+exit 0
+```
+
+**注意**：如果使用 `docker` 命令，需要在 docker-compose.yaml 中挂载 Docker socket：
+
+```yaml
+config-updater:
+  volumes:
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+```
+
+## 环境变量
+
+Hook 脚本执行时会设置以下环境变量：
+
+- `CONFIG_PATH`: 配置文件路径（如 `/config/config.yaml`）
+
+**使用示例**：
+
+```bash
+#!/bin/sh
+echo "配置文件已更新: $CONFIG_PATH"
+```
+
+## 调试技巧
+
+### 查看 Hook 执行日志
+
+```bash
+docker-compose logs -f config-updater
+```
+
+### 成功日志示例
+
+```
+[INFO] 正在执行钩子脚本: /hooks/post-update
+[INFO] 钩子脚本输出: 重载 Mihomo 配置...
+[INFO] 钩子脚本输出: 配置重载成功
+[INFO] 钩子脚本执行成功
+```
+
+### 失败日志示例
+
+```
+[WARN] 权限检查失败: 钩子脚本没有执行权限，请运行: chmod +x /hooks/post-update
+[WARN] 提示：在宿主机上运行 'chmod +x /hooks/post-update' 并重启容器
+[ERROR] 钩子脚本执行失败: permission denied
+```
+
+### 常见问题
+
+**问题 1**: `permission denied`
+
+**解决**：
+```bash
+chmod +x hooks/your-script.sh
+docker-compose restart config-updater
+```
+
+**问题 2**: Hook 没有执行
+
+**检查**：
+1. 挂载路径是否正确（必须是 `/hooks/post-update` 或 `/hooks/on-error`）
+2. 脚本是否有执行权限
+3. 脚本开头是否有 `#!/bin/sh`
+
+**问题 3**: Hook 执行失败导致配置回滚
+
+**说明**：这是设计行为，确保服务稳定性。如果 Hook 执行失败，配置会自动恢复到上一个版本。
+
+## 最佳实践
+
+1. **总是添加 `set -e`**：脚本出错时立即退出
+2. **返回正确的退出码**：成功返回 `0`，失败返回非 `0`
+3. **添加日志输出**：使用 `echo` 输出关键步骤，方便调试
+4. **测试脚本**：先在本地测试脚本能否正常执行
+5. **使用超时**：对于网络请求，建议设置超时避免阻塞
+
+```bash
+#!/bin/sh
+set -e  # 出错立即退出
+
+echo "开始执行..."
+
+# 使用超时
+curl --max-time 10 -s ...
+
+echo "执行成功"
+exit 0
 ```
