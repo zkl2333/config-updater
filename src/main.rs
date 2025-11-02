@@ -12,6 +12,7 @@ struct Config {
     config_path: String,
     update_interval: u64,
     min_config_size: u64,
+    user_agent: String,
 }
 
 // 固定的 Hook 路径（类似 Git hooks）
@@ -20,11 +21,10 @@ const ON_ERROR_HOOK: &str = "/hooks/on-error";
 
 impl Config {
     fn from_env() -> Result<Self> {
-        let sub_url = std::env::var("SUB_URL")
-            .context("需要设置 SUB_URL 环境变量")?;
+        let sub_url = std::env::var("SUB_URL").context("需要设置 SUB_URL 环境变量")?;
 
-        let config_path = std::env::var("CONFIG_PATH")
-            .unwrap_or_else(|_| "/config/config.yaml".to_string());
+        let config_path =
+            std::env::var("CONFIG_PATH").unwrap_or_else(|_| "/config/config.yaml".to_string());
 
         let update_interval = std::env::var("UPDATE_INTERVAL")
             .unwrap_or_else(|_| "3600".to_string())
@@ -36,20 +36,25 @@ impl Config {
             .parse()
             .context("MIN_CONFIG_SIZE 必须是数字")?;
 
+        let user_agent =
+            std::env::var("USER_AGENT").unwrap_or_else(|_| "clash-config-updater/1.0".to_string());
+
         Ok(Config {
             sub_url,
             config_path,
             update_interval,
             min_config_size,
+            user_agent,
         })
     }
 }
 
-async fn download_config(url: &str) -> Result<Vec<u8>> {
+async fn download_config(url: &str, user_agent: &str) -> Result<Vec<u8>> {
     info!("正在从以下地址下载配置: {}", url);
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
+        .user_agent(user_agent)
         .build()?;
 
     let response = client.get(url).send().await?;
@@ -77,8 +82,7 @@ fn is_config_changed(config_path: &str, new_data: &[u8]) -> Result<bool> {
         return Ok(true);
     }
 
-    let current_data = fs::read(config_path)
-        .context("读取当前配置失败")?;
+    let current_data = fs::read(config_path).context("读取当前配置失败")?;
 
     if current_data.is_empty() {
         info!("当前配置为空");
@@ -92,7 +96,11 @@ fn is_config_changed(config_path: &str, new_data: &[u8]) -> Result<bool> {
         info!("配置未变化 (哈希: {})", current_hash);
         Ok(false)
     } else {
-        info!("配置已变化 (旧: {}, 新: {})", &current_hash[..8], &new_hash[..8]);
+        info!(
+            "配置已变化 (旧: {}, 新: {})",
+            &current_hash[..8],
+            &new_hash[..8]
+        );
         Ok(true)
     }
 }
@@ -100,8 +108,7 @@ fn is_config_changed(config_path: &str, new_data: &[u8]) -> Result<bool> {
 fn ensure_config_dir(config_path: &str) -> Result<()> {
     if let Some(parent) = Path::new(config_path).parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent)
-                .context("创建配置目录失败")?;
+            fs::create_dir_all(parent).context("创建配置目录失败")?;
             info!("已创建配置目录: {}", parent.display());
         }
     }
@@ -111,8 +118,7 @@ fn ensure_config_dir(config_path: &str) -> Result<()> {
 fn backup_config(config_path: &str) -> Result<()> {
     if Path::new(config_path).exists() {
         let backup_path = format!("{}.bak", config_path);
-        fs::copy(config_path, &backup_path)
-            .context("备份配置失败")?;
+        fs::copy(config_path, &backup_path).context("备份配置失败")?;
         info!("已备份配置到: {}", backup_path);
     }
     Ok(())
@@ -121,8 +127,7 @@ fn backup_config(config_path: &str) -> Result<()> {
 fn restore_backup(config_path: &str) -> Result<()> {
     let backup_path = format!("{}.bak", config_path);
     if Path::new(&backup_path).exists() {
-        fs::copy(&backup_path, config_path)
-            .context("恢复备份失败")?;
+        fs::copy(&backup_path, config_path).context("恢复备份失败")?;
         warn!("已从备份恢复配置");
         Ok(())
     } else {
@@ -155,7 +160,8 @@ async fn update_config(config: &Config) -> Result<()> {
     info!("===== 开始更新配置 =====");
 
     // Download new config
-    let new_data = download_config(&config.sub_url).await
+    let new_data = download_config(&config.sub_url, &config.user_agent)
+        .await
         .context("下载配置失败")?;
 
     // Validate size
@@ -180,8 +186,7 @@ async fn update_config(config: &Config) -> Result<()> {
     backup_config(&config.config_path)?;
 
     // Write new config
-    fs::write(&config.config_path, &new_data)
-        .context("写入新配置失败")?;
+    fs::write(&config.config_path, &new_data).context("写入新配置失败")?;
     info!("配置文件已更新: {}", config.config_path);
 
     // Execute post-update hook
@@ -208,6 +213,7 @@ async fn run_updater(config: Config) {
     info!("订阅地址: {}", config.sub_url);
     info!("配置路径: {}", config.config_path);
     info!("更新间隔: {} 秒", config.update_interval);
+    info!("User-Agent: {}", config.user_agent);
 
     let interval = Duration::from_secs(config.update_interval);
     let mut interval_timer = time::interval(interval);
@@ -235,12 +241,9 @@ async fn run_updater(config: Config) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info")
-    ).init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
-    let config = Config::from_env()
-        .context("加载配置失败")?;
+    let config = Config::from_env().context("加载配置失败")?;
 
     run_updater(config).await;
 

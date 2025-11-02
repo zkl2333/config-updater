@@ -1,8 +1,49 @@
+# Rust 编译产物
 target/
-.env
-*.bak
+**/*.rs.bk
+*.pdb
+
+# Git
 .git/
 .gitignore
-README.md
-docker-compose.yaml
+.gitattributes
 
+# GitHub
+.github/
+
+# 文档
+README.md
+*.md
+docs/
+
+# Docker
+docker-compose.yaml
+docker-compose.yml
+.dockerignore
+Dockerfile.*
+
+# 配置和数据
+config/
+*.bak
+.env
+.env.*
+
+# 日志
+*.log
+
+# IDE 和编辑器
+.vscode/
+.idea/
+.editorconfig
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code
+.claude/
+
+# 临时文件
+*.tmp
+config_temp.yaml
+config_diff.tmp

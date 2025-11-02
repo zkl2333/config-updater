@@ -1,7 +1,30 @@
+# Rust
+target/
+**/*.rs.bk
+*.pdb
+
+# 环境变量和敏感信息
 .env
+.env.local
+.env.*.local
+
+# 配置文件和备份
+config/
 *.bak
 config_temp.yaml
 config_diff.tmp
+
+# 日志文件
 *.log
 
+# IDE 和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code
 .claude/settings.local.json
+.claude/cache/
