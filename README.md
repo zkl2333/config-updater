@@ -60,8 +60,8 @@ services:
 
   # 配置自动更新服务
   config-updater:
-    image: your-registry/config-updater
-    container_name: mihomo-config-updater
+    image: zkl2333/config-updater
+    container_name: config-updater
     restart: always
     environment:
       - SUB_URL=https://your-subscription-url?token=xxx
