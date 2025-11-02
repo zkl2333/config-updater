@@ -1,23 +1,34 @@
 # Build stage
 FROM rust:1.83-alpine AS builder
 
-RUN apk add --no-cache musl-dev pkgconf openssl-dev openssl-libs-static
+# Install build dependencies
+RUN apk add --no-cache musl-dev
 
 WORKDIR /build
 
-# Copy manifests
-COPY Cargo.toml ./
+# Copy manifests first for better layer caching
+COPY Cargo.toml Cargo.lock ./
 
-# Copy source
+# Create dummy main.rs to build dependencies
+RUN mkdir src && \
+    echo "fn main() {}" > src/main.rs && \
+    cargo build --release && \
+    rm -rf src
+
+# Copy real source code
 COPY src ./src
 
-# Build with release optimizations
-RUN cargo build --release
+# Touch main.rs to force rebuild of our code only
+RUN touch src/main.rs && \
+    cargo build --release && \
+    strip target/release/config-updater
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.19
 
-RUN apk add --no-cache ca-certificates bash curl
+# Install only essential runtime dependencies
+RUN apk add --no-cache ca-certificates && \
+    rm -rf /var/cache/apk/*
 
 WORKDIR /app
 
@@ -26,9 +37,6 @@ COPY --from=builder /build/target/release/config-updater /app/config-updater
 
 # Create config directory
 RUN mkdir -p /config
-
-# Set executable permissions
-RUN chmod +x /app/config-updater
 
 ENTRYPOINT ["/app/config-updater"]
 

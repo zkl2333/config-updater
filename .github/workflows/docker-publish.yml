@@ -63,6 +63,16 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Update Docker Hub Description
+        if: github.event_name != 'pull_request'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ${{ env.IMAGE_NAME }}
+          short-description: '极简通用配置自动更新服务'
+          readme-filepath: ./README.md
+
       - name: Build Docker image (PR only)
         if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v5
