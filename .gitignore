@@ -1,0 +1,7 @@
+.env
+*.bak
+config_temp.yaml
+config_diff.tmp
+*.log
+
+.claude/settings.local.json

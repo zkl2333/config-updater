@@ -1,0 +1,8 @@
+target/
+.env
+*.bak
+.git/
+.gitignore
+README.md
+docker-compose.yaml
+
