@@ -21,6 +21,7 @@ docker-compose.yaml
 docker-compose.yml
 .dockerignore
 Dockerfile.*
+!entrypoint.sh
 
 # 配置和数据
 config/

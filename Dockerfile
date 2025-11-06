@@ -10,9 +10,10 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main.rs to build dependencies
-# 使用缓存挂载来加速依赖下载和构建
+# 使用缓存挂载来加速依赖下载和构建（包括 target 目录）
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
     mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     cargo build --release && \
@@ -21,31 +22,46 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 # Copy real source code
 COPY src ./src
 
-# Touch main.rs to force rebuild of our code only
-# 使用缓存挂载来加速最终构建，并复制编译产物
+# 使用缓存挂载来加速最终构建
+# 编译完成后将二进制文件复制到非缓存位置
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target,sharing=locked \
-    touch src/main.rs && \
+    --mount=type=cache,target=/build/target \
     cargo build --release && \
-    cp /build/target/release/config-updater /tmp/config-updater && \
-    strip /tmp/config-updater && \
-    mv /tmp/config-updater /build/target/release/config-updater
+    cp /build/target/release/config-updater /config-updater && \
+    strip /config-updater
 
 # Runtime stage
 FROM alpine:3.19
 
-# Install runtime dependencies including tools for hooks
-RUN apk add --no-cache ca-certificates curl wget && \
+# Install runtime dependencies including tools for hooks and su-exec for user switching
+RUN apk add --no-cache ca-certificates curl wget su-exec && \
     rm -rf /var/cache/apk/*
+
+# Create default non-root user (UID/GID can be changed at runtime)
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser
 
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/target/release/config-updater /app/config-updater
+COPY --from=builder /config-updater /app/config-updater
 
-# Create config and hooks directories
-RUN mkdir -p /config /hooks
+# Copy entrypoint script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
-ENTRYPOINT ["/app/config-updater"]
+# Create config and hooks directories with proper permissions
+RUN mkdir -p /config /hooks && \
+    chown -R appuser:appuser /app /config /hooks
+
+# 环境变量说明（默认值）
+ENV PUID=1000 \
+    PGID=1000
+
+# 使用 entrypoint 脚本来处理动态 UID/GID
+ENTRYPOINT ["/entrypoint.sh"]
+
+# 默认命令
+CMD ["/app/config-updater"]
 

@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  config-updater:
+    image: your-username/config-updater:latest
+    container_name: config-updater
+    restart: unless-stopped
+    
+    # 运行时指定用户 ID 和组 ID
+    environment:
+      - PUID=1000    # 设置运行用户的 UID（与宿主机用户匹配）
+      - PGID=1000    # 设置运行用户的 GID（与宿主机组匹配）
+    
+    volumes:
+      # 挂载配置文件
+      - ./config.yaml:/config/config.yaml:ro
+      # 挂载输出目录（确保宿主机目录权限与 PUID/PGID 匹配）
+      - ./output:/app/output
+      # 挂载 hooks 目录（可选）
+      - ./hooks:/hooks:ro
+    
+    # 如果需要网络访问（例如下载配置文件）
+    # network_mode: bridge
+    
+    # 健康检查（可选）
+    # healthcheck:
+    #   test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+
+# 示例：如果需要匹配宿主机的其他用户 ID
+# 假设你的宿主机用户 ID 是 1001
+#   config-updater-custom:
+#     image: your-username/config-updater:latest
+#     environment:
+#       - PUID=1001
+#       - PGID=1001
+#     volumes:
+#       - ./config.yaml:/config/config.yaml:ro
+#       - ./output:/app/output
+
