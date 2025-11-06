@@ -60,8 +60,6 @@ impl Config {
 }
 
 async fn download_config(url: &str, user_agent: &str) -> Result<Vec<u8>> {
-    info!("正在从以下地址下载配置: {}", url);
-
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent(user_agent)
@@ -74,7 +72,7 @@ async fn download_config(url: &str, user_agent: &str) -> Result<Vec<u8>> {
     }
 
     let bytes = response.bytes().await?;
-    info!("已下载 {} 字节", bytes.len());
+    info!("已下载配置: {} 字节", bytes.len());
 
     Ok(bytes.to_vec())
 }
@@ -88,14 +86,12 @@ fn calculate_hash(data: &[u8]) -> String {
 
 fn is_config_changed(config_path: &str, new_data: &[u8]) -> Result<bool> {
     if !Path::new(config_path).exists() {
-        info!("配置文件不存在，将创建新文件");
         return Ok(true);
     }
 
     let current_data = fs::read(config_path).context("读取当前配置失败")?;
 
     if current_data.is_empty() {
-        info!("当前配置为空");
         return Ok(true);
     }
 
@@ -103,14 +99,9 @@ fn is_config_changed(config_path: &str, new_data: &[u8]) -> Result<bool> {
     let new_hash = calculate_hash(new_data);
 
     if current_hash == new_hash {
-        info!("配置未变化 (哈希: {})", current_hash);
         Ok(false)
     } else {
-        info!(
-            "配置已变化 (旧: {}, 新: {})",
-            &current_hash[..8],
-            &new_hash[..8]
-        );
+        info!("配置已变化: {} -> {}", &current_hash[..8], &new_hash[..8]);
         Ok(true)
     }
 }
@@ -119,7 +110,6 @@ fn ensure_config_dir(config_path: &str) -> Result<()> {
     if let Some(parent) = Path::new(config_path).parent() {
         if !parent.exists() {
             fs::create_dir_all(parent).context("创建配置目录失败")?;
-            info!("已创建配置目录: {}", parent.display());
         }
     }
     Ok(())
@@ -129,7 +119,6 @@ fn backup_config(config_path: &str) -> Result<()> {
     if Path::new(config_path).exists() {
         let backup_path = format!("{}.bak", config_path);
         fs::copy(config_path, &backup_path).context("备份配置失败")?;
-        info!("已备份配置到: {}", backup_path);
     }
     Ok(())
 }
@@ -171,8 +160,6 @@ fn check_hook_permissions(_hook_path: &str) -> Result<()> {
 }
 
 fn execute_hook(hook_path: &str, config_path: &str) -> Result<()> {
-    info!("正在执行钩子脚本: {}", hook_path);
-
     // 检查权限
     if let Err(e) = check_hook_permissions(hook_path) {
         warn!("权限检查失败: {}", e);
@@ -185,9 +172,8 @@ fn execute_hook(hook_path: &str, config_path: &str) -> Result<()> {
         .context("执行钩子脚本失败")?;
 
     if output.status.success() {
-        info!("钩子脚本执行成功");
         if !output.stdout.is_empty() {
-            info!("钩子脚本输出: {}", String::from_utf8_lossy(&output.stdout));
+            info!("钩子输出: {}", String::from_utf8_lossy(&output.stdout));
         }
         Ok(())
     } else {
@@ -197,8 +183,6 @@ fn execute_hook(hook_path: &str, config_path: &str) -> Result<()> {
 }
 
 async fn update_config(config: &Config) -> Result<()> {
-    info!("===== 开始更新配置 =====");
-
     // Download new config
     let new_data = download_config(&config.sub_url, &config.user_agent)
         .await
@@ -215,7 +199,6 @@ async fn update_config(config: &Config) -> Result<()> {
 
     // Check if changed
     if !is_config_changed(&config.config_path, &new_data)? {
-        info!("配置未变化，跳过更新");
         return Ok(());
     }
 
@@ -227,12 +210,12 @@ async fn update_config(config: &Config) -> Result<()> {
 
     // Write new config
     fs::write(&config.config_path, &new_data).context("写入新配置失败")?;
-    info!("配置文件已更新: {}", config.config_path);
+    info!("配置已更新: {}", config.config_path);
 
     // Execute post-update hook
     if Path::new(POST_UPDATE_HOOK).exists() {
         match execute_hook(POST_UPDATE_HOOK, &config.config_path) {
-            Ok(_) => info!("更新后钩子脚本执行完成"),
+            Ok(_) => {}
             Err(e) => {
                 error!("更新后钩子脚本执行失败: {}", e);
                 // Restore backup on hook failure
@@ -244,38 +227,30 @@ async fn update_config(config: &Config) -> Result<()> {
         }
     }
 
-    info!("配置更新成功完成");
     Ok(())
 }
 
 async fn run_updater(config: Config) {
-    info!("配置更新器已启动");
-    info!("订阅地址: {}", config.sub_url);
-    info!("配置路径: {}", config.config_path);
-    info!("更新间隔: {} 秒", config.update_interval);
-    info!("User-Agent: {}", config.user_agent);
+    info!(
+        "配置更新器已启动 | 订阅: {} | 路径: {} | 间隔: {}秒",
+        config.sub_url, config.config_path, config.update_interval
+    );
 
     let interval = Duration::from_secs(config.update_interval);
     let mut interval_timer = time::interval(interval);
 
-    // 立即执行第一次更新（tick 的第一次调用会立即返回）
-    info!("准备执行首次配置更新...");
-
     let mut iteration = 0u64;
     loop {
         iteration += 1;
-        info!("===== 第 {} 次更新循环 =====", iteration);
 
         interval_timer.tick().await;
-        info!("定时器触发，开始更新...");
 
         match update_config(&config).await {
             Ok(_) => {
-                info!("✓ 第 {} 次更新周期完成", iteration);
+                info!("更新完成 (#{})", iteration);
             }
             Err(e) => {
-                error!("✗ 第 {} 次更新失败: {}", iteration, e);
-                error!("错误详情: {:?}", e);
+                error!("更新失败 (#{}): {}", iteration, e);
 
                 // Execute error hook if exists
                 if Path::new(ON_ERROR_HOOK).exists() {
@@ -285,12 +260,6 @@ async fn run_updater(config: Config) {
                 }
             }
         }
-
-        info!("等待 {} 秒后进行下次更新...", config.update_interval);
-        info!(
-            "下次更新时间: {:?}",
-            std::time::SystemTime::now() + interval
-        );
     }
 }
 
@@ -325,31 +294,7 @@ async fn main() {
         .write_style(env_logger::WriteStyle::Always)
         .init();
 
-    info!("程序启动中...");
-    info!("版本: {}", env!("CARGO_PKG_VERSION"));
-    info!("进程 PID: {}", std::process::id());
-
-    // 输出环境变量信息（不包含敏感信息）
-    info!("环境变量检查:");
-    let sub_url_status = match std::env::var("SUB_URL") {
-        Ok(val) => {
-            if val.is_empty() {
-                "已设置但为空".to_string()
-            } else {
-                format!("已设置 (长度: {} 字符)", val.len())
-            }
-        }
-        Err(_) => "未设置".to_string(),
-    };
-    info!("  SUB_URL: {}", sub_url_status);
-    info!(
-        "  CONFIG_PATH: {}",
-        std::env::var("CONFIG_PATH").unwrap_or_else(|_| "使用默认值".to_string())
-    );
-    info!(
-        "  UPDATE_INTERVAL: {}",
-        std::env::var("UPDATE_INTERVAL").unwrap_or_else(|_| "使用默认值 3600".to_string())
-    );
+    info!("版本: {} | PID: {}", env!("CARGO_PKG_VERSION"), std::process::id());
 
     // 加载配置，如果失败则输出详细错误信息
     let config = match Config::from_env() {

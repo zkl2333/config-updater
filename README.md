@@ -9,7 +9,7 @@
 ```yaml
 services:
   config-updater:
-    image: your-registry/config-updater
+    image: zkl2333/config-updater
     environment:
       - SUB_URL=https://your-subscription-url
     volumes:
@@ -21,7 +21,7 @@ services:
 ```yaml
 services:
   config-updater:
-    image: your-registry/config-updater
+    image: zkl2333/config-updater
     environment:
       - SUB_URL=https://your-subscription-url
       - UPDATE_INTERVAL=3600

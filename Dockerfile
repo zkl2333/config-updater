@@ -11,9 +11,10 @@ COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main.rs to build dependencies
 # 使用缓存挂载来加速依赖下载和构建（包括 target 目录）
+# 使用 sharing=private 避免多平台构建时的锁竞争
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target \
+    --mount=type=cache,target=/build/target,sharing=private \
     mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     cargo build --release && \
@@ -24,9 +25,10 @@ COPY src ./src
 
 # 使用缓存挂载来加速最终构建
 # 编译完成后将二进制文件复制到非缓存位置
+# 使用 sharing=private 避免多平台构建时的锁竞争
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target \
+    --mount=type=cache,target=/build/target,sharing=private \
     cargo build --release && \
     cp /build/target/release/config-updater /config-updater && \
     strip /config-updater
