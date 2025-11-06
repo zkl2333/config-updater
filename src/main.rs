@@ -135,11 +135,11 @@ fn restore_backup(config_path: &str) -> Result<()> {
     }
 }
 
+#[cfg(unix)]
 fn check_hook_permissions(hook_path: &str) -> Result<()> {
     use std::os::unix::fs::PermissionsExt;
 
-    let metadata = std::fs::metadata(hook_path)
-        .context("无法读取钩子脚本元数据")?;
+    let metadata = std::fs::metadata(hook_path).context("无法读取钩子脚本元数据")?;
 
     let permissions = metadata.permissions();
     let mode = permissions.mode();
@@ -148,12 +148,15 @@ fn check_hook_permissions(hook_path: &str) -> Result<()> {
     let is_executable = (mode & 0o111) != 0;
 
     if !is_executable {
-        anyhow::bail!(
-            "钩子脚本没有执行权限，请运行: chmod +x {}",
-            hook_path
-        );
+        anyhow::bail!("钩子脚本没有执行权限，请运行: chmod +x {}", hook_path);
     }
 
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn check_hook_permissions(_hook_path: &str) -> Result<()> {
+    // Windows 系统不需要检查执行权限
     Ok(())
 }
 
