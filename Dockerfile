@@ -10,7 +10,10 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 
 # Create dummy main.rs to build dependencies
-RUN mkdir src && \
+# 使用缓存挂载来加速依赖下载和构建
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     cargo build --release && \
     rm -rf src
@@ -19,9 +22,15 @@ RUN mkdir src && \
 COPY src ./src
 
 # Touch main.rs to force rebuild of our code only
-RUN touch src/main.rs && \
+# 使用缓存挂载来加速最终构建，并复制编译产物
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target,sharing=locked \
+    touch src/main.rs && \
     cargo build --release && \
-    strip target/release/config-updater
+    cp /build/target/release/config-updater /tmp/config-updater && \
+    strip /tmp/config-updater && \
+    mv /tmp/config-updater /build/target/release/config-updater
 
 # Runtime stage
 FROM alpine:3.19
