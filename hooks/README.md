@@ -4,16 +4,28 @@
 
 ## 快速开始
 
-### 1. 创建 Hook 脚本
+### 1. 准备 Hook 脚本
 
-从下面的示例中复制一个脚本，保存到此目录（如 `mihomo.sh`）
+**重要说明**：
+- 📝 `mihomo.sh` 是提供的**示例脚本**（仅供参考）
+- ✅ `post-update` 和 `on-error` 是**实际生效的钩子名称**
+
+**使用方式**：
+
+```bash
+# 方式1：复制示例脚本
+cp hooks/mihomo.sh hooks/post-update
+
+# 方式2：根据示例编辑自定义脚本
+vi hooks/post-update
+```
 
 ### 2. 设置执行权限
 
 **⚠️ 重要**：必须给脚本添加执行权限
 
 ```bash
-chmod +x hooks/mihomo.sh
+chmod +x hooks/post-update
 ```
 
 **验证权限**：
@@ -24,13 +36,21 @@ ls -l hooks/
 
 ### 3. 挂载到容器
 
+**推荐方式**：挂载整个 hooks 目录
+
 在 `docker-compose.yaml` 中：
 
 ```yaml
 config-updater:
   volumes:
-    - ./hooks/mihomo.sh:/hooks/post-update:ro
+    - ./config:/config
+    - ./hooks:/hooks:ro
 ```
+
+这样可以：
+- ✅ 同时使用多个钩子（post-update 和 on-error）
+- ✅ 避免单文件挂载时可能创建成目录的问题
+- ✅ 更容易管理和更新钩子脚本
 
 ## Hook 路径说明
 
@@ -41,11 +61,16 @@ config-updater:
 | `/hooks/post-update` | 配置更新成功后 | 重载服务、发送通知 |
 | `/hooks/on-error` | 更新失败时 | 错误通知、告警 |
 
-**注意**：宿主机脚本可以任意命名，但挂载时必须映射到这两个路径之一。
+**推荐做法**：
+- 在宿主机 `hooks/` 目录下直接创建 `post-update` 和 `on-error` 脚本
+- 挂载整个 `./hooks:/hooks:ro` 目录到容器
+- 如果不需要某个钩子，直接不创建对应文件即可
 
 ## 示例脚本
 
 ### Mihomo 重载
+
+参考 `hooks/mihomo.sh`，或直接使用：
 
 ```bash
 #!/bin/sh
@@ -65,6 +90,8 @@ curl -s -X PUT "$MIHOMO_API/configs?force=true" \
 echo "配置重载成功"
 exit 0
 ```
+
+**使用**：`cp hooks/mihomo.sh hooks/post-update && chmod +x hooks/post-update`
 
 ### Clash 重载
 
@@ -176,16 +203,17 @@ docker-compose logs -f config-updater
 
 **解决**：
 ```bash
-chmod +x hooks/your-script.sh
+chmod +x hooks/post-update hooks/on-error
 docker-compose restart config-updater
 ```
 
 **问题 2**: Hook 没有执行
 
 **检查**：
-1. 挂载路径是否正确（必须是 `/hooks/post-update` 或 `/hooks/on-error`）
-2. 脚本是否有执行权限
-3. 脚本开头是否有 `#!/bin/sh`
+1. 是否挂载了 hooks 目录（`./hooks:/hooks:ro`）
+2. 脚本文件名是否正确（必须是 `post-update` 或 `on-error`）
+3. 脚本是否有执行权限（`chmod +x hooks/post-update`）
+4. 脚本开头是否有 `#!/bin/sh`
 
 **问题 3**: Hook 执行失败导致配置回滚
 

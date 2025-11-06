@@ -70,7 +70,7 @@ services:
       - CONFIG_PATH=/config/config.yaml
     volumes:
       - ./config.yaml:/config/config.yaml:rw
-      - ./hooks/mihomo.sh:/hooks/post-update:ro  # 可选：更新后重载
+      - ./hooks:/hooks:ro  # 可选：挂载 hooks 目录以启用更新后重载
     depends_on:
       - mihomo
 ```
@@ -105,19 +105,16 @@ services:
 
 ### 配置步骤
 
-#### 1. 创建 Hook 脚本目录
+#### 1. 准备 Hook 脚本
 
-在你的项目根目录创建 `hooks` 文件夹：
-
-```bash
-mkdir -p hooks
-```
-
-#### 2. 创建 Hook 脚本
-
-**Mihomo 重载示例** (`hooks/mihomo.sh`)：
+项目提供了 `hooks/mihomo.sh` 示例脚本，使用时需要复制并重命名：
 
 ```bash
+# 方式1：复制示例脚本
+cp hooks/mihomo.sh hooks/post-update
+
+# 方式2：创建自定义脚本
+cat > hooks/post-update << 'EOF'
 #!/bin/sh
 set -e
 
@@ -134,30 +131,21 @@ curl -s -X PUT "$MIHOMO_API/configs?force=true" \
 
 echo "配置重载成功"
 exit 0
+EOF
 ```
 
-**错误通知示例** (`hooks/on-error.sh`)：
+**说明**：
+- 📝 `hooks/mihomo.sh` 是提供的示例脚本（仅供参考）
+- ✅ `hooks/post-update` 是实际生效的钩子（配置更新后执行）
+- ✅ `hooks/on-error` 是错误钩子（更新失败时执行）
+
+#### 2. 设置可执行权限
+
+**⚠️ 重要**：Hook 脚本必须有执行权限，否则会执行失败。
 
 ```bash
-#!/bin/sh
-
-# 可以在这里添加通知逻辑
-echo "配置更新失败，时间: $(date)"
-echo "配置路径: $CONFIG_PATH"
-
-# 示例：发送邮件、Webhook 等
-# curl -X POST https://your-webhook-url -d "Config update failed"
-
-exit 0
-```
-
-#### 3. 设置可执行权限
-
-**重要**：Hook 脚本必须有执行权限，否则会执行失败。
-
-```bash
-chmod +x hooks/mihomo.sh
-chmod +x hooks/on-error.sh
+chmod +x hooks/post-update
+chmod +x hooks/on-error
 ```
 
 **验证权限**：
@@ -167,26 +155,33 @@ ls -l hooks/
 # 应该显示 -rwxr-xr-x (有 x 执行权限)
 ```
 
-#### 4. 挂载到容器
+#### 3. 挂载到容器
 
-在 `docker-compose.yaml` 中挂载 Hook 脚本：
+**推荐方式**：在 `docker-compose.yaml` 中挂载整个 hooks 目录：
 
 ```yaml
 config-updater:
   volumes:
     - ./config.yaml:/config/config.yaml:rw
-    - ./hooks/mihomo.sh:/hooks/post-update:ro     # 更新成功后执行
-    - ./hooks/on-error.sh:/hooks/on-error:ro      # 更新失败时执行
+    - ./hooks:/hooks:ro  # 挂载整个 hooks 目录
 ```
+
+这样可以：
+- ✅ 同时使用多个钩子（`post-update` 和 `on-error`）
+- ✅ 避免单文件挂载可能创建成目录的问题
+- ✅ 更容易管理和更新钩子脚本
+- ✅ 不需要的钩子直接不创建文件即可
 
 **注意事项**：
 
-- ✅ 使用 `:ro` (只读) 挂载 Hook 脚本更安全
-- ✅ Hook 脚本路径必须是 `/hooks/post-update` 或 `/hooks/on-error`（容器内路径）
-- ✅ 宿主机脚本可以任意命名（如 `mihomo.sh`），但挂载到容器时必须使用固定路径
+- ✅ 脚本文件名必须是 `post-update` 或 `on-error`（容器会查找这两个固定路径）
+- ✅ 使用 `:ro` (只读) 挂载更安全
 - ⚠️ 如果 Hook 执行失败，配置会自动回滚到上一个版本
+- 💡 完整的 Hook 示例请查看 [`hooks/README.md`](hooks/README.md)
 
-### 常见 Hook 场景
+### 更多 Hook 场景
+
+完整示例请查看 [`hooks/README.md`](hooks/README.md)，以下是快速参考：
 
 #### Clash 重载
 
@@ -197,13 +192,7 @@ curl -X PUT "http://clash:9090/configs?force=true" \
      -d '{"path": "/root/.config/clash/config.yaml"}'
 ```
 
-#### V2Ray/Xray 重启
-
-```bash
-#!/bin/sh
-# V2Ray 通常会自动检测配置变化，如不生效可手动重启
-docker restart v2ray
-```
+保存为 `hooks/post-update` 并添加执行权限。
 
 #### 通知推送（Telegram）
 
@@ -218,13 +207,7 @@ curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" 
      -d "text=${MESSAGE}"
 ```
 
-#### 通知推送（Bark - iOS）
-
-```bash
-#!/bin/sh
-BARK_URL="https://api.day.app/your_key"
-curl -s "${BARK_URL}/配置已更新/时间:$(date '+%H:%M:%S')"
-```
+保存为 `hooks/post-update` 并添加执行权限。
 
 ### Hook 调试
 
@@ -260,13 +243,15 @@ docker-compose logs -f config-updater
 
 2. **重新设置权限**：
    ```bash
-   chmod +x hooks/*.sh
+   chmod +x hooks/post-update hooks/on-error
    ```
 
 3. **重启容器**：
    ```bash
    docker-compose restart config-updater
    ```
+
+更多 Hook 示例和调试技巧请查看 [`hooks/README.md`](hooks/README.md)
 
 ## 卷挂载说明
 

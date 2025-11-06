@@ -166,8 +166,7 @@ fn execute_hook(hook_path: &str, config_path: &str) -> Result<()> {
         warn!("提示：在宿主机上运行 'chmod +x {}' 并重启容器", hook_path);
     }
 
-    let output = Command::new("sh")
-        .arg(hook_path)
+    let output = Command::new(hook_path)
         .env("CONFIG_PATH", config_path)
         .output()
         .context("执行钩子脚本失败")?;

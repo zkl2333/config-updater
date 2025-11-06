@@ -35,8 +35,8 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/target/release/config-updater /app/config-updater
 
-# Create config directory
-RUN mkdir -p /config
+# Create config and hooks directories
+RUN mkdir -p /config /hooks
 
 ENTRYPOINT ["/app/config-updater"]
 
