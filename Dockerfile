@@ -26,8 +26,8 @@ RUN touch src/main.rs && \
 # Runtime stage
 FROM alpine:3.19
 
-# Install only essential runtime dependencies
-RUN apk add --no-cache ca-certificates && \
+# Install runtime dependencies including tools for hooks
+RUN apk add --no-cache ca-certificates curl wget && \
     rm -rf /var/cache/apk/*
 
 WORKDIR /app
