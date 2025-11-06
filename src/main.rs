@@ -294,7 +294,11 @@ async fn main() {
         .write_style(env_logger::WriteStyle::Always)
         .init();
 
-    info!("版本: {} | PID: {}", env!("CARGO_PKG_VERSION"), std::process::id());
+    info!(
+        "版本: {} | PID: {}",
+        env!("CARGO_PKG_VERSION"),
+        std::process::id()
+    );
 
     // 加载配置，如果失败则输出详细错误信息
     let config = match Config::from_env() {
