@@ -271,10 +271,29 @@ async fn run_updater(config: Config) {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // 初始化日志系统，确保错误信息能够输出
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_secs()
+        .format_target(false)
+        .init();
 
-    let config = Config::from_env().context("加载配置失败")?;
+    info!("程序启动中...");
 
+    // 加载配置，如果失败则输出详细错误信息
+    let config = match Config::from_env() {
+        Ok(cfg) => {
+            info!("配置加载成功");
+            cfg
+        }
+        Err(e) => {
+            error!("配置加载失败: {}", e);
+            eprintln!("错误: {}", e);
+            eprintln!("请确保设置了必需的环境变量 SUB_URL");
+            std::process::exit(1);
+        }
+    };
+
+    info!("开始运行配置更新器");
     run_updater(config).await;
 
     Ok(())
