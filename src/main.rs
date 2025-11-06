@@ -22,12 +22,12 @@ const ON_ERROR_HOOK: &str = "/hooks/on-error";
 impl Config {
     fn from_env() -> Result<Self> {
         let sub_url = std::env::var("SUB_URL").context("需要设置 SUB_URL 环境变量")?;
-        
+
         // 验证 SUB_URL 不为空
         if sub_url.trim().is_empty() {
             anyhow::bail!("SUB_URL 不能为空字符串");
         }
-        
+
         // 验证 URL 格式
         if !sub_url.starts_with("http://") && !sub_url.starts_with("https://") {
             anyhow::bail!("SUB_URL 必须以 http:// 或 https:// 开头");
@@ -257,7 +257,7 @@ async fn run_updater(config: Config) {
 
     let interval = Duration::from_secs(config.update_interval);
     let mut interval_timer = time::interval(interval);
-    
+
     // 立即执行第一次更新（tick 的第一次调用会立即返回）
     info!("准备执行首次配置更新...");
 
@@ -265,7 +265,7 @@ async fn run_updater(config: Config) {
     loop {
         iteration += 1;
         info!("===== 第 {} 次更新循环 =====", iteration);
-        
+
         interval_timer.tick().await;
         info!("定时器触发，开始更新...");
 
@@ -287,7 +287,10 @@ async fn run_updater(config: Config) {
         }
 
         info!("等待 {} 秒后进行下次更新...", config.update_interval);
-        info!("下次更新时间: {:?}", std::time::SystemTime::now() + interval);
+        info!(
+            "下次更新时间: {:?}",
+            std::time::SystemTime::now() + interval
+        );
     }
 }
 
@@ -298,17 +301,22 @@ async fn main() {
         eprintln!("!!! 程序发生 PANIC !!!");
         eprintln!("Panic 信息: {}", panic_info);
         if let Some(location) = panic_info.location() {
-            eprintln!("位置: {}:{}:{}", location.file(), location.line(), location.column());
+            eprintln!(
+                "位置: {}:{}:{}",
+                location.file(),
+                location.line(),
+                location.column()
+            );
         }
         eprintln!("请将此信息报告给开发者");
         // 确保日志被刷新
         std::io::Write::flush(&mut std::io::stderr()).ok();
     }));
-    
+
     // 在日志系统初始化之前先输出到 stderr，确保能看到启动信息
     eprintln!("=== Config Updater 启动 ===");
     eprintln!("进程 PID: {}", std::process::id());
-    
+
     // 初始化日志系统，确保错误信息能够输出
     // 使用 write_style Always 确保在容器中也能正常显示
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
@@ -320,7 +328,7 @@ async fn main() {
     info!("程序启动中...");
     info!("版本: {}", env!("CARGO_PKG_VERSION"));
     info!("进程 PID: {}", std::process::id());
-    
+
     // 输出环境变量信息（不包含敏感信息）
     info!("环境变量检查:");
     let sub_url_status = match std::env::var("SUB_URL") {
@@ -331,11 +339,17 @@ async fn main() {
                 format!("已设置 (长度: {} 字符)", val.len())
             }
         }
-        Err(_) => "未设置".to_string()
+        Err(_) => "未设置".to_string(),
     };
     info!("  SUB_URL: {}", sub_url_status);
-    info!("  CONFIG_PATH: {}", std::env::var("CONFIG_PATH").unwrap_or_else(|_| "使用默认值".to_string()));
-    info!("  UPDATE_INTERVAL: {}", std::env::var("UPDATE_INTERVAL").unwrap_or_else(|_| "使用默认值 3600".to_string()));
+    info!(
+        "  CONFIG_PATH: {}",
+        std::env::var("CONFIG_PATH").unwrap_or_else(|_| "使用默认值".to_string())
+    );
+    info!(
+        "  UPDATE_INTERVAL: {}",
+        std::env::var("UPDATE_INTERVAL").unwrap_or_else(|_| "使用默认值 3600".to_string())
+    );
 
     // 加载配置，如果失败则输出详细错误信息
     let config = match Config::from_env() {
@@ -353,7 +367,7 @@ async fn main() {
 
     info!("开始运行配置更新器");
     run_updater(config).await;
-    
+
     // 理论上不应该到达这里，因为 run_updater 是无限循环
     error!("!!! 配置更新器意外退出 !!!");
     eprintln!("!!! 配置更新器意外退出 !!!");
