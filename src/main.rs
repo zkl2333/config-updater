@@ -289,7 +289,7 @@ async fn main() {
     eprintln!("版本: {}", env!("CARGO_PKG_VERSION"));
     eprintln!("进程 PID: {}", std::process::id());
     eprintln!("编译时间: {}", env!("CARGO_PKG_VERSION"));
-    eprintln!("");
+    eprintln!();
 
     // 显示环境变量（用于调试）
     eprintln!(">>> 环境变量:");
@@ -313,7 +313,7 @@ async fn main() {
         "    USER_AGENT: {}",
         std::env::var("USER_AGENT").unwrap_or_else(|_| "<未设置>".to_string())
     );
-    eprintln!("");
+    eprintln!();
 
     // 初始化日志系统，确保错误信息能够输出
     // 使用 write_style Always 确保在容器中也能正常显示
@@ -324,7 +324,7 @@ async fn main() {
         .write_style(env_logger::WriteStyle::Always)
         .init();
     eprintln!("    日志系统初始化完成");
-    eprintln!("");
+    eprintln!();
 
     info!(
         "版本: {} | PID: {}",
@@ -342,23 +342,23 @@ async fn main() {
             eprintln!("    配置路径: {}", cfg.config_path);
             eprintln!("    更新间隔: {} 秒", cfg.update_interval);
             eprintln!("    最小配置大小: {} 字节", cfg.min_config_size);
-            eprintln!("");
+            eprintln!();
             cfg
         }
         Err(e) => {
-            eprintln!("");
+            eprintln!();
             eprintln!("========================================");
             eprintln!("!!! 配置加载失败 !!!");
             eprintln!("========================================");
             eprintln!("错误详情: {}", e);
-            eprintln!("");
+            eprintln!();
             eprintln!("常见问题:");
             eprintln!("  1. SUB_URL 未设置");
             eprintln!("     解决: docker run -e SUB_URL=https://... your-image");
-            eprintln!("");
+            eprintln!();
             eprintln!("  2. SUB_URL 格式错误");
             eprintln!("     解决: 确保 URL 以 http:// 或 https:// 开头");
-            eprintln!("");
+            eprintln!();
             eprintln!("========================================");
             error!("配置加载失败: {}", e);
             std::process::exit(1);
@@ -367,13 +367,13 @@ async fn main() {
 
     eprintln!(">>> 启动配置更新器主循环...");
     eprintln!("========================================");
-    eprintln!("");
+    eprintln!();
     info!("开始运行配置更新器");
 
     run_updater(config).await;
 
     // 理论上不应该到达这里，因为 run_updater 是无限循环
-    eprintln!("");
+    eprintln!();
     eprintln!("========================================");
     eprintln!("!!! 配置更新器意外退出 !!!");
     eprintln!("========================================");
