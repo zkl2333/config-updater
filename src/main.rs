@@ -290,14 +290,29 @@ async fn main() {
     eprintln!("进程 PID: {}", std::process::id());
     eprintln!("编译时间: {}", env!("CARGO_PKG_VERSION"));
     eprintln!("");
-    
+
     // 显示环境变量（用于调试）
     eprintln!(">>> 环境变量:");
-    eprintln!("    SUB_URL: {}", std::env::var("SUB_URL").unwrap_or_else(|_| "<未设置>".to_string()));
-    eprintln!("    CONFIG_PATH: {}", std::env::var("CONFIG_PATH").unwrap_or_else(|_| "<未设置>".to_string()));
-    eprintln!("    UPDATE_INTERVAL: {}", std::env::var("UPDATE_INTERVAL").unwrap_or_else(|_| "<未设置>".to_string()));
-    eprintln!("    MIN_CONFIG_SIZE: {}", std::env::var("MIN_CONFIG_SIZE").unwrap_or_else(|_| "<未设置>".to_string()));
-    eprintln!("    USER_AGENT: {}", std::env::var("USER_AGENT").unwrap_or_else(|_| "<未设置>".to_string()));
+    eprintln!(
+        "    SUB_URL: {}",
+        std::env::var("SUB_URL").unwrap_or_else(|_| "<未设置>".to_string())
+    );
+    eprintln!(
+        "    CONFIG_PATH: {}",
+        std::env::var("CONFIG_PATH").unwrap_or_else(|_| "<未设置>".to_string())
+    );
+    eprintln!(
+        "    UPDATE_INTERVAL: {}",
+        std::env::var("UPDATE_INTERVAL").unwrap_or_else(|_| "<未设置>".to_string())
+    );
+    eprintln!(
+        "    MIN_CONFIG_SIZE: {}",
+        std::env::var("MIN_CONFIG_SIZE").unwrap_or_else(|_| "<未设置>".to_string())
+    );
+    eprintln!(
+        "    USER_AGENT: {}",
+        std::env::var("USER_AGENT").unwrap_or_else(|_| "<未设置>".to_string())
+    );
     eprintln!("");
 
     // 初始化日志系统，确保错误信息能够输出
@@ -354,7 +369,7 @@ async fn main() {
     eprintln!("========================================");
     eprintln!("");
     info!("开始运行配置更新器");
-    
+
     run_updater(config).await;
 
     // 理论上不应该到达这里，因为 run_updater 是无限循环
