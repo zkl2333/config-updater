@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -263,8 +263,11 @@ async fn run_updater(config: Config) {
     }
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    // 保留最基础的启动信息，防止 logger 初始化失败时无任何输出
+    // 使用 stderr，避免污染可能的 stdout 管道
+    eprintln!("Config Updater v{} 正在启动...", env!("CARGO_PKG_VERSION"));
+
     // 设置 panic hook 来捕获所有 panic
     std::panic::set_hook(Box::new(|panic_info| {
         eprintln!("!!! 程序发生 PANIC !!!");
@@ -277,106 +280,62 @@ async fn main() {
                 location.column()
             );
         }
-        eprintln!("请将此信息报告给开发者");
         // 确保日志被刷新
         std::io::Write::flush(&mut std::io::stderr()).ok();
     }));
 
-    // 在日志系统初始化之前先输出到 stderr，确保能看到启动信息
-    eprintln!("========================================");
-    eprintln!("=== Config Updater 启动中 ===");
-    eprintln!("========================================");
-    eprintln!("版本: {}", env!("CARGO_PKG_VERSION"));
-    eprintln!("进程 PID: {}", std::process::id());
-    eprintln!("编译时间: {}", env!("CARGO_PKG_VERSION"));
-    eprintln!();
+    // 手动初始化 Tokio Runtime
+    // 这在 musl/Alpine 环境下比 #[tokio::main] 更稳定
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Tokio Runtime 初始化失败");
 
-    // 显示环境变量（用于调试）
-    eprintln!(">>> 环境变量:");
-    eprintln!(
-        "    SUB_URL: {}",
-        std::env::var("SUB_URL").unwrap_or_else(|_| "<未设置>".to_string())
-    );
-    eprintln!(
-        "    CONFIG_PATH: {}",
-        std::env::var("CONFIG_PATH").unwrap_or_else(|_| "<未设置>".to_string())
-    );
-    eprintln!(
-        "    UPDATE_INTERVAL: {}",
-        std::env::var("UPDATE_INTERVAL").unwrap_or_else(|_| "<未设置>".to_string())
-    );
-    eprintln!(
-        "    MIN_CONFIG_SIZE: {}",
-        std::env::var("MIN_CONFIG_SIZE").unwrap_or_else(|_| "<未设置>".to_string())
-    );
-    eprintln!(
-        "    USER_AGENT: {}",
-        std::env::var("USER_AGENT").unwrap_or_else(|_| "<未设置>".to_string())
-    );
-    eprintln!();
+    runtime.block_on(async_main());
+}
 
-    // 初始化日志系统，确保错误信息能够输出
-    // 使用 write_style Always 确保在容器中也能正常显示
-    eprintln!(">>> 初始化日志系统...");
+async fn async_main() {
+    // 初始化日志系统
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_secs()
         .format_target(false)
         .write_style(env_logger::WriteStyle::Always)
         .init();
-    eprintln!("    日志系统初始化完成");
-    eprintln!();
 
     info!(
-        "版本: {} | PID: {}",
+        "Config Updater v{} 已启动 (PID: {})",
         env!("CARGO_PKG_VERSION"),
         std::process::id()
     );
 
-    // 加载配置，如果失败则输出详细错误信息
-    eprintln!(">>> 加载配置...");
+    // 使用 debug 级别打印环境变量，避免生产环境日志刷屏
+    debug!("环境变量:");
+    debug!(
+        "  SUB_URL: {}",
+        std::env::var("SUB_URL").unwrap_or_else(|_| "<未设置>".to_string())
+    );
+    debug!(
+        "  CONFIG_PATH: {}",
+        std::env::var("CONFIG_PATH").unwrap_or_else(|_| "<未设置>".to_string())
+    );
+
+    // 加载配置
     let config = match Config::from_env() {
         Ok(cfg) => {
-            eprintln!("    ✓ 配置加载成功");
-            info!("✓ 配置加载成功");
-            eprintln!("    订阅 URL: {}", cfg.sub_url);
-            eprintln!("    配置路径: {}", cfg.config_path);
-            eprintln!("    更新间隔: {} 秒", cfg.update_interval);
-            eprintln!("    最小配置大小: {} 字节", cfg.min_config_size);
-            eprintln!();
+            info!("配置加载成功");
+            debug!("配置详情: {:?}", cfg);
             cfg
         }
         Err(e) => {
-            eprintln!();
-            eprintln!("========================================");
-            eprintln!("!!! 配置加载失败 !!!");
-            eprintln!("========================================");
-            eprintln!("错误详情: {}", e);
-            eprintln!();
-            eprintln!("常见问题:");
-            eprintln!("  1. SUB_URL 未设置");
-            eprintln!("     解决: docker run -e SUB_URL=https://... your-image");
-            eprintln!();
-            eprintln!("  2. SUB_URL 格式错误");
-            eprintln!("     解决: 确保 URL 以 http:// 或 https:// 开头");
-            eprintln!();
-            eprintln!("========================================");
             error!("配置加载失败: {}", e);
+            eprintln!("\n错误: {}\n", e);
+            eprintln!("常见解决方法:");
+            eprintln!("  1. 确保 SUB_URL 环境变量已设置");
+            eprintln!("  2. 检查 URL 格式 (必须以 http:// 或 https:// 开头)");
             std::process::exit(1);
         }
     };
 
-    eprintln!(">>> 启动配置更新器主循环...");
-    eprintln!("========================================");
-    eprintln!();
-    info!("开始运行配置更新器");
-
+    info!("启动更新循环...");
     run_updater(config).await;
-
-    // 理论上不应该到达这里，因为 run_updater 是无限循环
-    eprintln!();
-    eprintln!("========================================");
-    eprintln!("!!! 配置更新器意外退出 !!!");
-    eprintln!("========================================");
-    error!("!!! 配置更新器意外退出 !!!");
-    std::process::exit(1);
 }

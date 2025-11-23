@@ -34,7 +34,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     strip /config-updater
 
 # Runtime stage
-FROM alpine:3.19
+FROM alpine:3.21
 
 # Install runtime dependencies including tools for hooks and su-exec for user switching
 RUN apk add --no-cache ca-certificates curl wget su-exec && \
@@ -51,7 +51,9 @@ COPY --from=builder /config-updater /app/config-updater
 
 # Copy entrypoint script
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Convert Windows line endings (CRLF) to Unix (LF) and set executable permission
+RUN sed -i 's/\r$//' /entrypoint.sh && \
+    chmod +x /entrypoint.sh
 
 # Create config and hooks directories with proper permissions
 RUN mkdir -p /config /hooks && \
