@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
 # 日志辅助函数
@@ -18,14 +18,14 @@ if [ "$(id -u appuser)" != "$PUID" ] || [ "$(id -g appuser)" != "$PGID" ]; then
     
     # 更新组 ID
     if [ "$(id -g appuser)" != "$PGID" ]; then
-        delgroup appuser 2>/dev/null || true
-        addgroup -g "$PGID" appuser 2>/dev/null || true
+        groupdel appuser 2>/dev/null || true
+        groupadd -g "$PGID" appuser
     fi
     
     # 更新用户 ID
     if [ "$(id -u appuser)" != "$PUID" ]; then
-        deluser appuser 2>/dev/null || true
-        adduser -D -u "$PUID" -G appuser appuser 2>/dev/null || true
+        userdel appuser 2>/dev/null || true
+        useradd -u "$PUID" -g appuser -m -s /bin/bash appuser
     fi
     
     # 修复权限
@@ -50,4 +50,5 @@ log "正在执行应用程序..."
 
 # 以 appuser 身份执行应用程序
 # 使用 'exec' 替换 shell 进程，确保信号正确传递
-exec su-exec appuser "$@"
+# Debian 使用 gosu
+exec gosu appuser "$@"

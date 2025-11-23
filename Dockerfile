@@ -1,8 +1,5 @@
 # Build stage
-FROM rust:1.83-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache musl-dev
+FROM rust:1.83-slim-bullseye AS builder
 
 WORKDIR /build
 
@@ -34,15 +31,19 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     strip /config-updater
 
 # Runtime stage
-FROM alpine:3.21
+FROM debian:bullseye-slim
 
-# Install runtime dependencies including tools for hooks and su-exec for user switching
-RUN apk add --no-cache ca-certificates curl wget su-exec && \
-    rm -rf /var/cache/apk/*
+# Install runtime dependencies including tools for hooks and gosu for user switching
+# ca-certificates, curl, wget 常用工具
+# gosu 用于替代 su-exec
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates curl wget gosu && \
+    rm -rf /var/lib/apt/lists/*
 
 # Create default non-root user (UID/GID can be changed at runtime)
-RUN addgroup -g 1000 appuser && \
-    adduser -D -u 1000 -G appuser appuser
+# Debian 使用 useradd/groupadd
+RUN groupadd -g 1000 appuser && \
+    useradd -u 1000 -g appuser -m -s /bin/bash appuser
 
 WORKDIR /app
 
@@ -68,4 +69,3 @@ ENTRYPOINT ["/entrypoint.sh"]
 
 # 默认命令
 CMD ["/app/config-updater"]
-
