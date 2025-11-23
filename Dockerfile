@@ -1,20 +1,20 @@
 # Build stage
-FROM rust:1.83-slim-bullseye AS builder
+FROM rust:1.83-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache musl-dev
 
 WORKDIR /build
 
 # Copy manifests first for better layer caching
 COPY Cargo.toml Cargo.lock ./
 
-# Create dummy main.rs to build dependencies
-# 使用缓存挂载来加速依赖下载和构建（包括 target 目录）
-# 使用 sharing=private 避免多平台构建时的锁竞争
+# 仅拉取依赖，避免占位 main 污染最终二进制
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target,sharing=private \
-    mkdir src && \
+    mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
-    cargo build --release && \
+    cargo fetch --locked && \
     rm -rf src
 
 # Copy real source code
@@ -26,24 +26,19 @@ COPY src ./src
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/build/target,sharing=private \
-    cargo build --release && \
-    cp /build/target/release/config-updater /config-updater && \
-    strip /config-updater
+    cargo build --release --locked && \
+    cp /build/target/release/config-updater /config-updater
 
 # Runtime stage
-FROM debian:bullseye-slim
+FROM alpine:3.21
 
-# Install runtime dependencies including tools for hooks and gosu for user switching
-# ca-certificates, curl, wget 常用工具
-# gosu 用于替代 su-exec
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl wget gosu && \
-    rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies including tools for hooks and su-exec for user switching
+RUN apk add --no-cache ca-certificates curl wget su-exec bash && \
+    rm -rf /var/cache/apk/*
 
 # Create default non-root user (UID/GID can be changed at runtime)
-# Debian 使用 useradd/groupadd
-RUN groupadd -g 1000 appuser && \
-    useradd -u 1000 -g appuser -m -s /bin/bash appuser
+RUN addgroup -g 1000 appuser && \
+    adduser -D -u 1000 -G appuser appuser
 
 WORKDIR /app
 
