@@ -20,17 +20,13 @@ log "启动中，使用 UID=${PUID}, GID=${PGID}"
 if [ "$(id -u appuser)" != "$PUID" ] || [ "$(id -g appuser)" != "$PGID" ]; then
     log "正在调整用户/组 ID..."
     
-    # 更新组 ID
-    if [ "$(id -g appuser)" != "$PGID" ]; then
-        groupdel appuser 2>/dev/null || true
-        groupadd -g "$PGID" appuser
-    fi
+    # 删除旧用户和组
+    deluser appuser 2>/dev/null || true
+    delgroup appuser 2>/dev/null || true
     
-    # 更新用户 ID
-    if [ "$(id -u appuser)" != "$PUID" ]; then
-        userdel appuser 2>/dev/null || true
-        useradd -u "$PUID" -g appuser -m -s /bin/bash appuser
-    fi
+    # 创建新组和用户
+    addgroup -g "$PGID" appuser
+    adduser -D -u "$PUID" -G appuser appuser
     
     # 修复权限
     log "正在更新目录权限..."
@@ -54,5 +50,5 @@ log "正在执行应用程序..."
 
 # 以 appuser 身份执行应用程序
 # 使用 'exec' 替换 shell 进程，确保信号正确传递
-# Debian 使用 gosu
-exec gosu appuser "$@"
+# Alpine 使用 su-exec
+exec su-exec appuser "$@"
