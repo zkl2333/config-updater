@@ -6,9 +6,25 @@ log() {
     echo "[entrypoint] $1"
 }
 
+# 加载构建时间
+if [ -f /etc/profile.d/build-time.sh ]; then
+    source /etc/profile.d/build-time.sh
+fi
+
 # 默认 UID/GID
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
+
+# 输出编译时间
+if [ -n "$BUILD_TIME" ]; then
+    log "编译时间: $BUILD_TIME"
+else
+    # 如果没有设置 BUILD_TIME，尝试从二进制文件获取修改时间
+    if [ -f "$1" ]; then
+        BUILD_TIME=$(stat -c %y "$1" 2>/dev/null | cut -d. -f1 || date -u +'%Y-%m-%d %H:%M:%S')
+        log "编译时间: $BUILD_TIME (从二进制文件获取)"
+    fi
+fi
 
 log "启动中，使用 UID=${PUID}, GID=${PGID}"
 

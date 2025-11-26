@@ -21,7 +21,16 @@ RUN mkdir -p /config /hooks && \
     chown -R appuser:appuser /app /config /hooks
 
 ENV PUID=1000 \
-    PGID=1000
+    PGID=1000 \
+    BUILD_TIME=""
+
+# 设置构建时间（在构建时会被覆盖）
+ARG BUILD_TIME_ARG
+RUN if [ -n "$BUILD_TIME_ARG" ]; then \
+        echo "export BUILD_TIME=\"$BUILD_TIME_ARG\"" >> /etc/profile.d/build-time.sh; \
+    else \
+        echo "export BUILD_TIME=\"$(date -u +'%Y-%m-%d %H:%M:%S UTC')\"" >> /etc/profile.d/build-time.sh; \
+    fi
 
 ENTRYPOINT ["/entrypoint.sh"]
 
