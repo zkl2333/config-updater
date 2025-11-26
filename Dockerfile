@@ -10,8 +10,10 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 
 # 仅拉取依赖，避免占位 main 污染最终二进制
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+# 使用 TARGETARCH 区分不同架构的缓存，避免跨平台构建时冲突
+ARG TARGETARCH
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
     mkdir -p src && \
     echo "fn main() {}" > src/main.rs && \
     cargo fetch --locked && \
@@ -22,10 +24,10 @@ COPY src ./src
 
 # 使用缓存挂载来加速最终构建
 # 编译完成后将二进制文件复制到非缓存位置
-# 使用 sharing=private 避免多平台构建时的锁竞争
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target,sharing=private \
+# 使用 TARGETARCH 区分不同架构的缓存
+RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,id=cargo-git-${TARGETARCH} \
+    --mount=type=cache,target=/build/target,id=cargo-target-${TARGETARCH} \
     cargo build --release --locked && \
     cp /build/target/release/config-updater /config-updater
 
