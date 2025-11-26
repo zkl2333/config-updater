@@ -10,6 +10,10 @@ log() {
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
+# 输出编译时间（从二进制文件修改时间获取）
+BUILD_TIME=$(stat -c %y /app/config-updater 2>/dev/null | cut -d. -f1)
+log "编译时间: $BUILD_TIME"
+
 log "启动中，使用 UID=${PUID}, GID=${PGID}"
 
 # 如果需要则调整权限
