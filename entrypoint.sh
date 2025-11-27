@@ -1,92 +1,54 @@
-#!/bin/sh
+#!/bin/bash
 set -e
 
-echo "========================================"
-echo "=== Entrypoint Script Started ==="
-echo "========================================"
-echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "Script: $0"
-echo "Args: $@"
-echo ""
+# 日志辅助函数
+log() {
+    echo "[entrypoint] $1"
+}
 
-# 默认 UID 和 GID
+# 默认 UID/GID
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
 
-echo ">>> Configuration:"
-echo "    PUID=${PUID}"
-echo "    PGID=${PGID}"
-echo "    SUB_URL=${SUB_URL:-<NOT SET>}"
-echo "    CONFIG_PATH=${CONFIG_PATH:-/config/config.yaml}"
-echo "    UPDATE_INTERVAL=${UPDATE_INTERVAL:-3600}"
-echo ""
+# 输出编译时间（从二进制文件修改时间获取）
+BUILD_TIME=$(stat -c %y /app/config-updater 2>/dev/null | cut -d. -f1)
+log "编译时间: $BUILD_TIME"
+
+log "启动中，使用 UID=${PUID}, GID=${PGID}"
+
+# 如果需要则调整权限
+if [ "$(id -u appuser)" != "$PUID" ] || [ "$(id -g appuser)" != "$PGID" ]; then
+    log "正在调整用户/组 ID..."
+    
+    # 删除旧用户和组
+    deluser appuser 2>/dev/null || true
+    delgroup appuser 2>/dev/null || true
+    
+    # 创建新组和用户
+    addgroup -g "$PGID" appuser
+    adduser -D -u "$PUID" -G appuser appuser
+    
+    # 修复权限
+    log "正在更新目录权限..."
+    chown -R appuser:appuser /app /config /hooks 2>/dev/null || true
+fi
+
+# 验证环境变量
+if [ -z "$SUB_URL" ]; then
+    echo "[错误] 未设置 SUB_URL！"
+    echo "请设置 SUB_URL 环境变量。"
+    exit 1
+fi
 
 # 检查二进制文件
-echo ">>> Checking binary file:"
-if [ -f "$1" ]; then
-    echo "    File: $1"
-    echo "    Exists: YES"
-    echo "    Size: $(stat -c%s "$1" 2>/dev/null || stat -f%z "$1" 2>/dev/null || echo 'unknown') bytes"
-    echo "    Permissions: $(ls -l "$1")"
-else
-    echo "    ERROR: Binary file not found: $1"
+if [ ! -f "$1" ]; then
+    echo "[错误] 未找到二进制文件: $1"
     exit 1
 fi
-echo ""
 
-# 如果当前用户 ID 和 GID 与期望的不同，则调整
-if [ "$(id -u appuser)" != "$PUID" ] || [ "$(id -g appuser)" != "$PGID" ]; then
-    echo ">>> Adjusting user and group IDs..."
-    
-    # 修改组 ID
-    if [ "$(id -g appuser)" != "$PGID" ]; then
-        echo "    Updating group to $PGID..."
-        delgroup appuser 2>/dev/null || true
-        addgroup -g "$PGID" appuser 2>/dev/null || true
-    fi
-    
-    # 修改用户 ID
-    if [ "$(id -u appuser)" != "$PUID" ]; then
-        echo "    Updating user to $PUID..."
-        deluser appuser 2>/dev/null || true
-        adduser -D -u "$PUID" -G appuser appuser 2>/dev/null || true
-    fi
-    
-    # 更新目录权限
-    echo "    Updating directory permissions..."
-    chown -R appuser:appuser /app /config /hooks 2>/dev/null || true
-    echo "    Done."
-else
-    echo ">>> User IDs already correct, skipping adjustment."
-fi
-echo ""
+log "正在执行应用程序..."
 
-# 验证必需环境变量
-echo ">>> Validating environment:"
-if [ -z "$SUB_URL" ]; then
-    echo "    ERROR: SUB_URL is not set!"
-    echo "    Please set SUB_URL environment variable."
-    echo "    Example: -e SUB_URL=https://your-subscription-url"
-    exit 1
-fi
-echo "    SUB_URL: OK"
-echo ""
-
-# 切换到 appuser 用户并执行应用
-echo ">>> Starting application as user appuser (${PUID}:${PGID})"
-echo "    Command: $@"
-echo "========================================"
-echo ""
-
-# 不使用 exec，这样可以捕获退出码
-su-exec appuser "$@"
-EXIT_CODE=$?
-
-echo ""
-echo "========================================"
-echo "!!! Application exited with code: $EXIT_CODE"
-echo "Date: $(date '+%Y-%m-%d %H:%M:%S')"
-echo "========================================"
-
-exit $EXIT_CODE
-
+# 以 appuser 身份执行应用程序
+# 使用 'exec' 替换 shell 进程，确保信号正确传递
+# Alpine 使用 su-exec
+exec su-exec appuser "$@"
